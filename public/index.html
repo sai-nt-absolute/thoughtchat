@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Chat</title>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #messages { height: 400px; border: 1px solid #ccc; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
+        #messageInput { width: 70%; padding: 10px; }
+        button { padding: 10px 20px; }
+        .message { margin: 5px 0; }
+        .timestamp { color: gray; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+    <h1>Simple Chat</h1>
+    <div id="messages"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+
+    <script>
+        // Connect to the server (replace with your Render URL)
+        const socket = io('https://your-chat-app.onrender.com');
+        const messagesDiv = document.getElementById('messages');
+        const input = document.getElementById('messageInput');
+
+        // Listen for messages from server
+        socket.on('message', function(data) {
+            const msgElement = document.createElement('div');
+            msgElement.className = 'message';
+            msgElement.innerHTML = `
+                <strong>${data.user}:</strong> 
+                ${data.text}
+                <span class="timestamp">(${new Date(data.timestamp).toLocaleTimeString()})</span>
+            `;
+            messagesDiv.appendChild(msgElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        // Send message function
+        function sendMessage() {
+            const text = input.value.trim();
+            if (text) {
+                socket.emit('message', {text: text, user: 'User'});
+                input.value = '';
+            }
+        }
+
+        // Allow Enter key to send message
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
