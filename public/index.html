@@ -1,54 +1,335 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Chat</title>
+    <title>TChat</title>
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #messages { height: 400px; border: 1px solid #ccc; padding: 10px; overflow-y: scroll; margin-bottom: 10px; }
-        #messageInput { width: 70%; padding: 10px; }
-        button { padding: 10px 20px; }
-        .message { margin: 5px 0; }
-        .timestamp { color: gray; font-size: 0.8em; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 500px;
+        }
+        
+        .rooms-panel {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .room-btn {
+            background: #e9ecef;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+        
+        .room-btn:hover {
+            background: #dee2e6;
+        }
+        
+        .room-btn.active {
+            background: #4b6cb7;
+            color: white;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8fafc;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 70%;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.own {
+            background: #4b6cb7;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 0;
+        }
+        
+        .message.other {
+            background: #e9ecef;
+            color: #333;
+            margin-right: auto;
+            border-bottom-left-radius: 0;
+        }
+        
+        .message-info {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .message-header {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        
+        .input-area {
+            display: flex;
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        #messageInput {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            outline: none;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        #messageInput:focus {
+            border-color: #4b6cb7;
+        }
+        
+        #sendButton {
+            background: #4b6cb7;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            margin-left: 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        #sendButton:hover {
+            background: #3a5ca0;
+        }
+        
+        .room-info {
+            background: #e3f2fd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .user-joined, .user-left {
+            text-align: center;
+            padding: 8px;
+            color: #6c757d;
+            font-size: 0.9rem;
+            background: #fff3e0;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                height: calc(100vh - 20px);
+            }
+            
+            .chat-container {
+                height: 400px;
+            }
+            
+            .message {
+                max-width: 85%;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Simple Chat</h1>
-    <div id="messages"></div>
-    <input type="text" id="messageInput" placeholder="Type a message..." />
-    <button onclick="sendMessage()">Send</button>
+    <div class="container">
+        <div class="header">
+            <h1>💬 T Chat</h1>
+            <p>Join different rooms and chat with others</p>
+        </div>
+        
+        <div class="chat-container">
+            <div class="rooms-panel">
+                <button class="room-btn active" data-room="general">CR1</button>
+                <button class="room-btn" data-room="tech">CR2</button>
+                <button class="room-btn" data-room="gaming">CR3</button>
+                <button class="room-btn" data-room="music">CR4</button>
+                <button class="room-btn" data-room="random">CR5</button>
+            </div>
+            
+            <div class="room-info">
+                Currently in: <span id="currentRoom">General</span>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="status">Welcome to the Tchat! Select a room and start. </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Type your message..." />
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        const socket = io('https://thought-chat.onrender.com');
-        const messagesDiv = document.getElementById('messages');
-        const input = document.getElementById('messageInput');
-
+        // Connect to the server (use your actual Render URL)
+        const socket = io('https://simple-chat-app.onrender.com');
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const roomButtons = document.querySelectorAll('.room-btn');
+        const currentRoomSpan = document.getElementById('currentRoom');
+        
+        let currentRoom = 'general';
+        let username = prompt('Enter your username:') || 'Anonymous';
+        
+        // Join the default room
+        socket.emit('joinRoom', { room: currentRoom, username: username });
+        
+        // Update current room display
+        function updateCurrentRoom(room) {
+            currentRoomSpan.textContent = room.charAt(0).toUpperCase() + room.slice(1);
+            currentRoom = room;
+        }
+        
+        // Handle room selection
+        roomButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const room = button.getAttribute('data-room');
+                
+                // Remove active class from all buttons
+                roomButtons.forEach(btn => btn.classList.remove('active'));
+                // Add active class to clicked button
+                button.classList.add('active');
+                
+                // Leave current room
+                socket.emit('leaveRoom');
+                
+                // Join new room
+                socket.emit('joinRoom', { room: room, username: username });
+                
+                updateCurrentRoom(room);
+                
+                // Clear chat messages
+                chatMessages.innerHTML = '<div class="status">Welcome to ' + room + ' room!</div>';
+            });
+        });
+        
         // Listen for messages from server
         socket.on('message', function(data) {
-            const msgElement = document.createElement('div');
-            msgElement.className = 'message';
-            msgElement.innerHTML = `
-                <strong>${data.user}:</strong> 
-                ${data.text}
-                <span class="timestamp">(${new Date(data.timestamp).toLocaleTimeString()})</span>
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message ' + (data.user === username ? 'own' : 'other');
+            
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            
+            messageElement.innerHTML = `
+                <div class="message-header">${data.user}</div>
+                <div class="message-text">${data.text}</div>
+                <div class="message-info">${timestamp}</div>
             `;
-            messagesDiv.appendChild(msgElement);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         });
-
+        
+        // Handle user joined/left events
+        socket.on('userJoined', function(data) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'user-joined';
+            messageElement.textContent = data.message;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        
+        socket.on('userLeft', function(data) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'user-left';
+            messageElement.textContent = data.message;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        
         // Send message function
         function sendMessage() {
-            const text = input.value.trim();
+            const text = messageInput.value.trim();
             if (text) {
-                socket.emit('message', {text: text, user: 'User'});
-                input.value = '';
+                socket.emit('message', {text: text, user: username});
+                messageInput.value = '';
             }
         }
-
-        // Allow Enter key to send message
-        input.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') sendMessage();
+        
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
         });
+        
+        // Initial focus on input
+        messageInput.focus();
     </script>
 </body>
 </html>
