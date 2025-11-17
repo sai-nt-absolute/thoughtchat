@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Multi-Room Chat</title>
+    <title>T Chat</title>
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <style>
         * {
@@ -185,6 +185,7 @@
             margin: 5px 0;
         }
         
+        /* Modals */
         .password-modal {
             position: fixed;
             top: 0;
@@ -224,6 +225,18 @@
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            margin: 5px;
+        }
+        
+        .password-cancel {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
         }
         
         @media (max-width: 600px) {
@@ -245,17 +258,17 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💬 Multi-Room Chat</h1>
+            <h1>💬 T Chat</h1>
             <p>Join different rooms and chat with others</p>
         </div>
         
         <div class="chat-container">
             <div class="rooms-panel">
                 <button class="room-btn active" data-room="CR1">General</button>
-                <button class="room-btn" data-room="CR2">Talk</button>
-                <button class="room-btn" data-room="CR3">Drawing</button>
-                <button class="room-btn" data-room="CR4">Anime</button>
-                <button class="room-btn" data-room="CR5">4B</button>
+                <button class="room-btn" data-room="CR2">CR1</button>
+                <button class="room-btn" data-room="CR3">CR2</button>
+                <button class="room-btn" data-room="CR4">CR3</button>
+                <button class="room-btn" data-room="CR5">CR4</button>
             </div>
             
             <div class="room-info">
@@ -263,7 +276,7 @@
             </div>
             
             <div class="chat-messages" id="chatMessages">
-                <div class="status">Welcome to the chat! Join a room and start chatting.</div>
+                <div class="status">Welcome to T Chat! Please enter your username to join.</div>
             </div>
             
             <div class="input-area">
@@ -273,34 +286,85 @@
         </div>
     </div>
 
-    <!-- Password Modal -->
+    <!-- Custom Username Modal -->
+    <div id="usernameModal" class="password-modal">
+        <div class="password-modal-content">
+            <h3>Welcome to T Chat</h3>
+            <p>Please enter your username to join the chat</p>
+            <input type="text" id="usernameInput" class="password-input" placeholder="Enter your username" />
+            <button id="usernameSubmit" class="password-submit">Join Chat</button>
+        </div>
+    </div>
+
+    <!-- Custom Password Modal (with Cancel) -->
     <div id="passwordModal" class="password-modal" style="display: none;">
         <div class="password-modal-content">
             <h3>Password Required</h3>
             <p>This room requires a password to enter.</p>
             <input type="password" id="passwordInput" class="password-input" placeholder="Enter password" />
-            <button id="passwordSubmit" class="password-submit">Join Room</button>
+            <div style="margin-top: 15px;">
+                <button id="passwordSubmit" class="password-submit" style="margin-right: 10px;">Join Room</button>
+                <button id="passwordCancel" class="password-cancel">Cancel</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // Connect to the server (use your actual Render URL)
+        // Connect to the server
         const socket = io('https://thoughtchat.onrender.com');
         const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
         const roomButtons = document.querySelectorAll('.room-btn');
         const currentRoomSpan = document.getElementById('currentRoom');
+        const usernameModal = document.getElementById('usernameModal');
         const passwordModal = document.getElementById('passwordModal');
+        const usernameInput = document.getElementById('usernameInput');
         const passwordInput = document.getElementById('passwordInput');
-        const passwordSubmit = document.getElementById('passwordSubmit');
         
         let currentRoom = 'CR1';
-        let username = prompt('Enter your username:') || 'Anonymous';
+        let username = null;
         let currentPassword = null;
         
-        // Join the default room
-        socket.emit('joinRoom', { room: currentRoom, username: username });
+        // Show username modal on page load
+        window.onload = function() {
+            showUsernameModal();
+        };
+        
+        function showUsernameModal() {
+            usernameModal.style.display = 'flex';
+            usernameInput.focus();
+        }
+        
+        // Handle username submission
+        document.getElementById('usernameSubmit').addEventListener('click', function() {
+            const uname = usernameInput.value.trim();
+            if (uname) {
+                username = uname;
+                usernameModal.style.display = 'none';
+                // Join the default room
+                socket.emit('joinRoom', { room: currentRoom, username: username });
+                updateCurrentRoom(currentRoom, 'General');
+            }
+        });
+        
+        // Close modal when pressing Enter in username field
+        usernameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('usernameSubmit').click();
+            }
+        });
+        
+        // Handle password cancellation
+        document.getElementById('passwordCancel').addEventListener('click', function() {
+            passwordModal.style.display = 'none';
+            // Return to General room
+            roomButtons.forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-room="CR1"]').classList.add('active');
+            updateCurrentRoom('CR1', 'General');
+            socket.emit('leaveRoom');
+            socket.emit('joinRoom', { room: 'CR1', username: username });
+        });
         
         // Update current room display
         function updateCurrentRoom(room, roomName) {
@@ -332,7 +396,7 @@
                 button.classList.add('active');
                 
                 // Check if room requires password
-                const passwordRequiredRooms = ['CR3', 'CR4', 'CR5']; // CR3, CR4, CR5 need passwords
+                const passwordRequiredRooms = ['CR3', 'CR4', 'CR5'];
                 
                 if (passwordRequiredRooms.includes(room) && room !== 'CR1') {
                     // Show password modal
@@ -369,7 +433,7 @@
         }
         
         // Handle password submission
-        passwordSubmit.addEventListener('click', () => {
+        document.getElementById('passwordSubmit').addEventListener('click', () => {
             const room = passwordModal.dataset.targetRoom;
             const roomName = passwordModal.dataset.targetRoomName;
             const password = passwordInput.value.trim();
@@ -384,7 +448,7 @@
         // Close modal when pressing Enter in password field
         passwordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                passwordSubmit.click();
+                document.getElementById('passwordSubmit').click();
             }
         });
         
@@ -431,16 +495,40 @@
             updateCurrentRoom('CR1', 'General');
         });
         
-        // Handle room joined
+        // Handle room joined with messages
         socket.on('roomJoined', function(data) {
             updateCurrentRoom(data.room, data.roomName);
-            chatMessages.innerHTML = '<div class="status">Welcome to ' + data.roomName + ' room!</div>';
+            
+            // Clear chat and show messages
+            chatMessages.innerHTML = '';
+            
+            // Display existing messages
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(msg => {
+                    const messageElement = document.createElement('div');
+                    messageElement.className = 'message ' + (msg.user === username ? 'own' : 'other');
+                    
+                    const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+                    
+                    messageElement.innerHTML = `
+                        <div class="message-header">${msg.user}</div>
+                        <div class="message-text">${msg.text}</div>
+                        <div class="message-info">${timestamp}</div>
+                    `;
+                    
+                    chatMessages.appendChild(messageElement);
+                });
+            } else {
+                chatMessages.innerHTML = '<div class="status">Welcome to ' + data.roomName + ' room!</div>';
+            }
+            
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         });
         
         // Send message function
         function sendMessage() {
             const text = messageInput.value.trim();
-            if (text) {
+            if (text && username) {
                 socket.emit('message', {text: text, user: username});
                 messageInput.value = '';
             }
