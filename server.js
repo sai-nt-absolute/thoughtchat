@@ -1,9 +1,7 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const path = require('path');
-const fs = require('fs').promises;
-const { v4: uuidv4 } = require('uuid'); // For unique message IDs
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,70 +19,68 @@ const roomPasswords = {
     'CR5': '26Dec'
 };
 
-// Messages directory
-const MESSAGES_DIR = './messages';
+// MongoDB connection (use your MongoDB Atlas connection string)
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const DB_NAME = 'chatdb';
+const COLLECTION_NAME = 'messages';
 
-// Ensure messages directory exists
-async function ensureMessagesDir() {
+let db;
+
+// Connect to MongoDB
+async function connectToDatabase() {
     try {
-        await fs.access(MESSAGES_DIR);
-    } catch {
-        await fs.mkdir(MESSAGES_DIR, { recursive: true });
+        const client = new MongoClient(MONGODB_URI);
+        await client.connect();
+        db = client.db(DB_NAME);
+        console.log('Connected to MongoDB');
+    } catch (error) {
+        console.error('Failed to connect to MongoDB:', error);
+        // Fallback to local storage if MongoDB fails
+        console.log('Falling back to local storage...');
     }
 }
 
-// Load messages from file
+// Get collection
+function getCollection() {
+    if (!db) throw new Error('Database not connected');
+    return db.collection(COLLECTION_NAME);
+}
+
+// Load messages from MongoDB
 async function loadMessages(room) {
     try {
-        const filePath = `${MESSAGES_DIR}/room_${room}.json`;
-        const data = await fs.readFile(filePath, 'utf8');
-        return JSON.parse(data);
+        const collection = getCollection();
+        const messages = await collection.find({ room: room })
+            .sort({ timestamp: -1 }) // Sort by newest first
+            .limit(1000) // Limit to 1000 messages
+            .toArray();
+        
+        // Reverse to show oldest first
+        return messages.reverse();
     } catch (error) {
-        // If file doesn't exist, return empty array
+        console.error('Error loading messages:', error);
         return [];
     }
 }
 
-// Save messages to file
-async function saveMessages(room, messages) {
+// Save message to MongoDB
+async function saveMessage(message) {
     try {
-        const filePath = `${MESSAGES_DIR}/room_${room}.json`;
-        await fs.writeFile(filePath, JSON.stringify(messages, null, 2));
+        const collection = getCollection();
+        await collection.insertOne(message);
+        return message;
     } catch (error) {
-        console.error('Error saving messages:', error);
-    }
-}
-
-// Add message to room
-async function addMessage(room, message) {
-    try {
-        // Load existing messages
-        let messages = await loadMessages(room);
-        
-        // Add new message
-        messages.push(message);
-        
-        // Keep only last 1000 messages per room to prevent unlimited growth
-        if (messages.length > 1000) {
-            messages = messages.slice(-1000);
-        }
-        
-        // Save back to file
-        await saveMessages(room, messages);
-        
-        return messages;
-    } catch (error) {
-        console.error('Error adding message:', error);
-        return [];
+        console.error('Error saving message:', error);
+        return null;
     }
 }
 
 // Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
 // Serve the main page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile('public/index.html', { root: __dirname });
 });
 
 // Handle socket connections
@@ -147,24 +143,26 @@ io.on('connection', (socket) => {
         if (socket.room && socket.username) {
             // Create message object
             const message = {
-                id: uuidv4(),
+                id: require('crypto').randomUUID(), // Using crypto for UUID
                 user: data.user || socket.username,
                 text: data.text,
                 room: socket.room,
-                timestamp: new Date().toISOString()
+                timestamp: new Date()
             };
             
-            // Add to storage
-            const messages = await addMessage(socket.room, message);
+            // Save to database
+            const savedMessage = await saveMessage(message);
             
-            // Broadcast message to specific room
-            io.to(socket.room).emit('message', {
-                user: message.user,
-                text: message.text,
-                room: message.room,
-                timestamp: message.timestamp,
-                id: message.id
-            });
+            if (savedMessage) {
+                // Broadcast message to specific room
+                io.to(socket.room).emit('message', {
+                    user: message.user,
+                    text: message.text,
+                    room: message.room,
+                    timestamp: message.timestamp,
+                    id: message.id
+                });
+            }
         }
     });
     
@@ -192,8 +190,8 @@ function getRoomName(room) {
     return roomNames[room] || room;
 }
 
-// Initialize messages directory
-ensureMessagesDir().then(() => {
+// Initialize database connection and start server
+connectToDatabase().then(() => {
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
