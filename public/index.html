@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>TChat</title>
+    <title>Multi-Room Chat</title>
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <style>
         * {
@@ -74,6 +74,16 @@
         .room-btn.active {
             background: #4b6cb7;
             color: white;
+        }
+        
+        .room-info {
+            background: #e3f2fd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+            color: #1976d2;
         }
         
         .chat-messages {
@@ -158,16 +168,6 @@
             background: #3a5ca0;
         }
         
-        .room-info {
-            background: #e3f2fd;
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin: 10px 0;
-            text-align: center;
-            font-weight: bold;
-            color: #1976d2;
-        }
-        
         .status {
             text-align: center;
             padding: 10px;
@@ -183,6 +183,47 @@
             background: #fff3e0;
             border-radius: 5px;
             margin: 5px 0;
+        }
+        
+        .password-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .password-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .password-input {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        
+        .password-submit {
+            background: #4b6cb7;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
         }
         
         @media (max-width: 600px) {
@@ -204,17 +245,17 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💬 T Chat</h1>
+            <h1>💬 Multi-Room Chat</h1>
             <p>Join different rooms and chat with others</p>
         </div>
         
         <div class="chat-container">
             <div class="rooms-panel">
-                <button class="room-btn active" data-room="general">CR1</button>
-                <button class="room-btn" data-room="tech">CR2</button>
-                <button class="room-btn" data-room="gaming">CR3</button>
-                <button class="room-btn" data-room="music">CR4</button>
-                <button class="room-btn" data-room="random">CR5</button>
+                <button class="room-btn active" data-room="CR1">General</button>
+                <button class="room-btn" data-room="CR2">Talk</button>
+                <button class="room-btn" data-room="CR3">Drawing</button>
+                <button class="room-btn" data-room="CR4">Anime</button>
+                <button class="room-btn" data-room="CR5">4B</button>
             </div>
             
             <div class="room-info">
@@ -222,13 +263,23 @@
             </div>
             
             <div class="chat-messages" id="chatMessages">
-                <div class="status">Welcome to the Tchat! Select a room and start. </div>
+                <div class="status">Welcome to the chat! Join a room and start chatting.</div>
             </div>
             
             <div class="input-area">
                 <input type="text" id="messageInput" placeholder="Type your message..." />
                 <button id="sendButton">Send</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="passwordModal" class="password-modal" style="display: none;">
+        <div class="password-modal-content">
+            <h3>Password Required</h3>
+            <p>This room requires a password to enter.</p>
+            <input type="password" id="passwordInput" class="password-input" placeholder="Enter password" />
+            <button id="passwordSubmit" class="password-submit">Join Room</button>
         </div>
     </div>
 
@@ -240,40 +291,101 @@
         const sendButton = document.getElementById('sendButton');
         const roomButtons = document.querySelectorAll('.room-btn');
         const currentRoomSpan = document.getElementById('currentRoom');
+        const passwordModal = document.getElementById('passwordModal');
+        const passwordInput = document.getElementById('passwordInput');
+        const passwordSubmit = document.getElementById('passwordSubmit');
         
-        let currentRoom = 'general';
+        let currentRoom = 'CR1';
         let username = prompt('Enter your username:') || 'Anonymous';
+        let currentPassword = null;
         
         // Join the default room
         socket.emit('joinRoom', { room: currentRoom, username: username });
         
         // Update current room display
-        function updateCurrentRoom(room) {
-            currentRoomSpan.textContent = room.charAt(0).toUpperCase() + room.slice(1);
+        function updateCurrentRoom(room, roomName) {
+            currentRoomSpan.textContent = roomName || getRoomName(room);
             currentRoom = room;
+        }
+        
+        // Helper function to get human-readable room names
+        function getRoomName(room) {
+            const roomNames = {
+                'CR1': 'General',
+                'CR2': 'Talk',
+                'CR3': 'Drawing',
+                'CR4': 'Anime',
+                'CR5': '4B'
+            };
+            return roomNames[room] || room;
         }
         
         // Handle room selection
         roomButtons.forEach(button => {
             button.addEventListener('click', () => {
                 const room = button.getAttribute('data-room');
+                const roomName = button.textContent;
                 
                 // Remove active class from all buttons
                 roomButtons.forEach(btn => btn.classList.remove('active'));
                 // Add active class to clicked button
                 button.classList.add('active');
                 
-                // Leave current room
-                socket.emit('leaveRoom');
+                // Check if room requires password
+                const passwordRequiredRooms = ['CR3', 'CR4', 'CR5']; // CR3, CR4, CR5 need passwords
                 
-                // Join new room
-                socket.emit('joinRoom', { room: room, username: username });
-                
-                updateCurrentRoom(room);
-                
-                // Clear chat messages
-                chatMessages.innerHTML = '<div class="status">Welcome to ' + room + ' room!</div>';
+                if (passwordRequiredRooms.includes(room) && room !== 'CR1') {
+                    // Show password modal
+                    currentPassword = null;
+                    passwordInput.value = '';
+                    passwordModal.style.display = 'flex';
+                    
+                    // Store room to join after password
+                    passwordModal.dataset.targetRoom = room;
+                    passwordModal.dataset.targetRoomName = roomName;
+                } else {
+                    // Join room directly
+                    joinRoom(room, roomName);
+                }
             });
+        });
+        
+        // Join room function
+        function joinRoom(room, roomName) {
+            // Leave current room
+            socket.emit('leaveRoom');
+            
+            // Join new room
+            socket.emit('joinRoom', { 
+                room: room, 
+                username: username,
+                password: currentPassword 
+            });
+            
+            updateCurrentRoom(room, roomName);
+            
+            // Clear chat messages
+            chatMessages.innerHTML = '<div class="status">Welcome to ' + roomName + ' room!</div>';
+        }
+        
+        // Handle password submission
+        passwordSubmit.addEventListener('click', () => {
+            const room = passwordModal.dataset.targetRoom;
+            const roomName = passwordModal.dataset.targetRoomName;
+            const password = passwordInput.value.trim();
+            
+            if (password) {
+                currentPassword = password;
+                passwordModal.style.display = 'none';
+                joinRoom(room, roomName);
+            }
+        });
+        
+        // Close modal when pressing Enter in password field
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                passwordSubmit.click();
+            }
         });
         
         // Listen for messages from server
@@ -308,6 +420,21 @@
             messageElement.textContent = data.message;
             chatMessages.appendChild(messageElement);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        
+        // Handle password required
+        socket.on('passwordRequired', function(data) {
+            alert('Incorrect password for room ' + getRoomName(data.room));
+            // Reset room selection
+            roomButtons.forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-room="CR1"]').classList.add('active');
+            updateCurrentRoom('CR1', 'General');
+        });
+        
+        // Handle room joined
+        socket.on('roomJoined', function(data) {
+            updateCurrentRoom(data.room, data.roomName);
+            chatMessages.innerHTML = '<div class="status">Welcome to ' + data.roomName + ' room!</div>';
         });
         
         // Send message function
